@@ -5,10 +5,11 @@ const statuses = {new:'Нова',consideration:'В обробці',in_progress:'
 const fields = {status:'Статус',deadline:'Термін виконання',plannedDeadline:'Плановий термін',description:'Опис',category:'Категорія',type:'Тип',answer:'Відповідь',responsible:'Відповідальний',assignee:'Виконавець',validity:'Важливість',rating:'Оцінка',comment:'Коментар',gallery:'Вкладення',media:'Звітні вкладення',completedAt:'Виконано'};
 const state = {page:1, boot:null, selected:null, order:null, history:[], messages:[], notifications:[], historyPage:1, chatPage:1, generation:0, listGeneration:0, draftFiles:[]};
 const date = v => v ? (Number.isNaN(new Date(v).getTime()) ? String(v) : new Date(v).toLocaleString('uk-UA')) : '—';
+const shortDate = v => v ? new Date(v).toLocaleDateString('uk-UA') : '—';
 const person = v => Array.isArray(v) ? v.map(person).join(', ') || '—' : typeof v === 'string' ? v : v?.name || [v?.lastName,v?.firstName,v?.patronymic].filter(Boolean).join(' ') || v?.role || '—';
 const address = s => Object.values(s?.address || s?.addressData || {}).filter(v => v !== null).join(', ');
 const context = () => ({kind:state.selected.kind,id:state.selected.id});
-function notice(text, error=false) {$('notice').textContent=text;$('notice').hidden=!text;$('notice').className=error?'error':'';}
+function notice(text, error=false) {$('noticeText').textContent=text;$('notice').hidden=!text;$('notice').className=error?'error':'';$('notice').setAttribute('role',error?'alert':'status');}
 function errorText(error) {return typeof error==='string'?error: error?.['hydra:description'] || error?.message || error?.detail || JSON.stringify(error);}
 async function request(path, body) {
   if(window.hostedRequest)return window.hostedRequest(path,body);
@@ -40,24 +41,28 @@ async function start() {
 async function loadList() {
   const generation=++state.listGeneration;
   $('count').textContent='Завантаження…';
+  $('list').setAttribute('aria-busy','true');
   const kind=$('kind').value;
-  const d=await call({action:'list',kind,space:$('space').value,page:state.page,group:$('group').value,category:kind==='orders'?$('category').value:'',search:$('search').value.trim()});
+  let d;
+  try{d=await call({action:'list',kind,space:$('space').value,page:state.page,group:$('group').value,category:kind==='orders'?$('category').value:'',search:$('search').value.trim()});}
+  catch(e){if(generation===state.listGeneration){$('count').textContent='Не вдалося оновити';$('list').removeAttribute('aria-busy');}throw e;}
   if(generation!==state.listGeneration)return;
+  $('list').removeAttribute('aria-busy');
   $('count').textContent=`Знайдено: ${d['hydra:totalItems'] ?? '—'}`;$('page').textContent=`Сторінка ${state.page}`;
   $('prev').disabled=state.page<=1;$('next').disabled=!d['hydra:view']?.['hydra:next'];
   $('list').innerHTML=(d['hydra:member']||[]).map(o=>{
     const overdue=o.deadline&&new Date(o.deadline)<new Date()&&!['completed','canceled'].includes(o.status);
-    return `<article class="card ${state.selected?.id===o.id&&state.selected?.kind===kind?'selected':''}" tabindex="0" data-id="${esc(o.id)}">
-      <h3>№ ${esc(o.id)} <span class="status">${esc(statuses[o.status]||o.status)}</span></h3>
-      <p><small>${esc(date(o.createdAt))} · ${esc(state.boot.categories[o.category]||o.name?.name||'Платна послуга')}</small></p>
-      <p>${esc(o.description)}</p>
-      ${o.deadline?`<p class="${overdue?'overdue':'muted'}">Термін: ${esc(date(o.deadline))}${overdue?' · прострочено':''}</p>`:''}
-      ${o.review?`<p>Оцінка: ${esc(o.review.rating)} / 5</p>`:''}${o.unreadMessagesCount?`<p>Нових повідомлень: ${esc(o.unreadMessagesCount)}</p>`:''}
+    return `<article class="card ${state.selected?.id===o.id&&state.selected?.kind===kind?'selected':''}" role="button" tabindex="0" data-id="${esc(o.id)}" aria-label="Відкрити заявку № ${esc(o.id)}" aria-pressed="${state.selected?.id===o.id&&state.selected?.kind===kind}">
+      <div class="card-heading"><h3>№ ${esc(o.id)}</h3><span class="status" data-status="${esc(o.status)}">${esc(statuses[o.status]||o.status)}</span></div>
+      <p class="card-meta">${esc(state.boot.categories[o.category]||o.name?.name||'Платна послуга')} · ${esc(shortDate(o.createdAt))}</p>
+      <p class="card-description">${esc(o.description)}</p>
+      <div class="card-footer">${o.deadline?`<span class="${overdue?'overdue':'muted'}">${overdue?'Прострочено · ':'Термін: '}${esc(shortDate(o.deadline))}</span>`:''}
+      ${o.review?`<span>Оцінка ${esc(o.review.rating)}/5</span>`:''}${o.unreadMessagesCount?`<strong>Нових: ${esc(o.unreadMessagesCount)}</strong>`:''}</div>
     </article>`;
   }).join('')||'<p>Заявок за цими умовами немає.</p>';
   document.querySelectorAll('.card').forEach(card=>{
-    const open=()=>run(null,async()=>{await openOrder(kind,Number(card.dataset.id));if(matchMedia('(max-width:950px)').matches)$('detail').scrollIntoView({behavior:'smooth'});});
-    card.onclick=open;card.onkeydown=e=>{if(e.key==='Enter')open();};
+    const open=()=>run(null,()=>openOrder(kind,Number(card.dataset.id)));
+    card.onclick=open;card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}};
   });
 }
 function fact(label,value){return `<dt>${esc(label)}</dt><dd>${esc(value??'—')}</dd>`;}
@@ -68,38 +73,76 @@ function photos(gallery) {
     return `<a href="${esc(href)}" target="_blank" rel="noreferrer">${String(f.mimeType||'').startsWith('image/')?`<img src="${esc(href)}" alt="${esc(f.originalName||'Фото заявки')}" loading="lazy">`:''}<small>${esc(f.originalName||f.name||'Відкрити файл')}</small></a>`;
   }).join('')||'<p class="muted">Немає вкладень.</p>'}</div>`;
 }
+let listScrollY=0;
+const messageDrafts=new Map();
+function backToList(){
+  if(location.hash==='#order')history.back();
+  else showList();
+}
+function showList(){
+  $('app').classList.remove('detail-open');
+  requestAnimationFrame(()=>{
+    if(matchMedia('(max-width:950px)').matches)window.scrollTo(0,listScrollY);
+    document.querySelector('.card.selected')?.focus({preventScroll:true});
+  });
+}
+window.addEventListener('hashchange',()=>{
+  if(location.hash==='#order'&&state.selected)$('app').classList.add('detail-open');
+  else showList();
+});
+if(location.hash==='#order')history.replaceState(null,'',location.pathname+location.search);
 async function openOrder(kind,id) {
   const generation=++state.generation;
   state.selected={kind,id};state.history=[];state.messages=[];state.notifications=[];state.historyPage=1;state.chatPage=1;state.historyError=null;state.chatError=null;
-  $('detail').innerHTML='<p>Завантаження заявки…</p>';
-  const result=await call({action:'detail',kind,id});if(generation!==state.generation)return;
+  if(!$('app').classList.contains('detail-open'))listScrollY=window.scrollY;
+  $('app').classList.add('detail-open');
+  if(location.hash!=='#order')history.pushState(null,'','#order');
+  $('detail').innerHTML='<button class="back-list mobileOnly">← До списку</button><p role="status">Завантаження заявки…</p>';
+  $('detail').querySelector('.back-list').onclick=backToList;
+  $('detail').scrollTop=0;
+  if(matchMedia('(max-width:950px)').matches)window.scrollTo(0,0);
+  let result;
+  try{result=await call({action:'detail',kind,id});}catch(e){if(generation===state.generation){$('detail').innerHTML='<button class="back-list">← До списку</button><p class="sectionError">Не вдалося завантажити заявку. Виберіть її ще раз зі списку.</p>';$('detail').querySelector('.back-list').onclick=backToList;}throw e;}
+  if(generation!==state.generation)return;
   state.order=result.order;const o=state.order;
-  document.querySelectorAll('.card').forEach(x=>x.classList.toggle('selected',Number(x.dataset.id)===id&&$('kind').value===kind));
+  document.querySelectorAll('.card').forEach(x=>{const selected=Number(x.dataset.id)===id&&$('kind').value===kind;x.classList.toggle('selected',selected);x.setAttribute('aria-pressed',String(selected));});
   const review=typeof o.review==='object'?o.review:null;
-  $('detail').innerHTML=`<div class="toolbar"><button id="backList" class="mobileOnly">← До списку</button><h2>Заявка № ${esc(o.id)}</h2><button id="refreshDetail">Оновити</button><button id="export">Зберегти повне зведення</button><button id="print">Друк / PDF</button></div>
+  $('detail').innerHTML=`<div class="detail-header"><div class="detail-title"><button id="backList" class="mobileOnly">← До списку</button><h2 tabindex="-1" id="orderTitle">Заявка № ${esc(o.id)}</h2><span class="status" data-status="${esc(o.status)}">${esc(statuses[o.status]||o.status)}</span></div>
+    <div class="detail-actions"><button id="refreshDetail">Оновити</button><button id="export">Зберегти TXT</button><button id="print">Друк / PDF</button></div>
+    <nav class="section-nav" aria-label="Розділи заявки"><button data-section="overviewSection">Звернення</button><button data-section="notificationsSection">Пояснення УК</button><button data-section="chatSection">Діалог</button><button data-section="historySection">Історія</button><button data-section="reviewSection">Оцінка</button></nav></div>
+    <section class="detail-section" id="overviewSection" tabindex="-1">
+    <details class="order-facts"><summary>Реквізити заявки · створено ${esc(shortDate(o.createdAt))}</summary>
     <dl class="facts">${fact('Статус',statuses[o.status]||o.status)}${fact('Категорія / послуга',state.boot.categories[o.category]||o.name?.name||o.name)}
     ${fact('Створено',date(o.createdAt))}${fact('Термін виконання',date(o.deadline))}${fact('Плановий термін',date(o.plannedDeadline))}
-    ${fact('Виконано / закрито',date(o.completedAt))}${fact('Об’єкт',address(o.space)||address(o))}${fact('Відповідальний',person(o.responsible))}</dl>
+    ${fact('Виконано / закрито',date(o.completedAt))}${fact('Об’єкт',address(o.space)||address(o))}${fact('Відповідальний',person(o.responsible))}</dl></details>
+    ${o.deadline?`<p class="deadline ${new Date(o.deadline)<new Date()&&!['completed','canceled'].includes(o.status)?'overdue':''}"><strong>Термін виконання:</strong> ${esc(date(o.deadline))}${new Date(o.deadline)<new Date()&&!['completed','canceled'].includes(o.status)?' · прострочено':''}</p>`:''}
     <h3>Звернення</h3><div class="pre">${esc(o.description)}</div>
     <h3>Відповідь / звіт про виконання</h3><div class="pre">${esc(o.answer||'Відповідь у заявці відсутня.')}</div>
     ${o.cancellationReason?`<h3>Причина відхилення</h3><div class="pre">${esc(o.cancellationReason)}</div>`:''}
-    <h3>Фото до звернення</h3>${photos(o.gallery)}<h3>Фото / файли звіту</h3>${photos(o.media)}
-    <h3>Оцінка заявки</h3>${review?`<p><strong>${esc(review.rating)} / 5</strong></p><div class="pre">${esc(review.comment)}</div>${review.validationComment?`<p>${esc(review.validationComment)}</p>`:''}`:'<p class="muted">Оцінки немає.</p>'}
+    <details class="attachments"><summary>Вкладення · ${(o.gallery?.files?.length||0)+(o.media?.files?.length||0)}</summary><h3>Фото до звернення</h3>${photos(o.gallery)}<h3>Фото / файли звіту</h3>${photos(o.media)}</details></section>
+    <section class="detail-section" id="notificationsSection" tabindex="-1"><h3>Сповіщення та пояснення УК</h3><p class="muted">Коментарі до перенесення термінів і зміни статусів. Новіші зверху.</p><div id="notifications">Завантаження…</div></section>
+    <section class="detail-section" id="chatSection" tabindex="-1"><h3>Діалог за заявкою</h3><button id="moreChat" hidden>Раніші повідомлення</button><div id="chat">Завантаження…</div>
+    <form id="messageForm"><label>Нове повідомлення <textarea name="text" rows="3" required placeholder="Напишіть уточнення або відповідь…"></textarea></label><button class="primary">Надіслати повідомлення</button><span class="muted form-hint">Повідомлення отримає управляюча компанія.</span></form></section>
+    <section class="detail-section" id="historySection" tabindex="-1"><h3>Історія змін</h3><p class="muted">Статуси, терміни та інші зміни в заявці.</p><div id="history">Завантаження…</div><button id="moreHistory" hidden>Ще зміни</button></section>
+    <section class="detail-section" id="reviewSection" tabindex="-1"><h3>Оцінка заявки</h3>${review?`<p><strong>${esc(review.rating)} / 5</strong></p><div class="pre">${esc(review.comment)}</div>${review.validationComment?`<p>${esc(review.validationComment)}</p>`:''}`:'<p class="muted">Оцінки немає.</p>'}
+    ${o.status!=='completed'?'<p class="muted">DIM9000 приймає оцінки лише для виконаних заявок. Форму залишено доступною для спроби.</p>':''}
     <details><summary>${review?'Змінити оцінку':'Залишити оцінку'}</summary><form id="reviewForm"><label>Оцінка <select name="rating">${options([1,2,3,4,5].map(x=>[String(x),`${x} / 5`]),String(review?.rating||5))}</select></label><label>Коментар <textarea name="comment" rows="3" maxlength="800">${esc(review?.comment||'')}</textarea></label><button>Зберегти оцінку</button></form></details>
-    <h3>Сповіщення та пояснення УК</h3><p class="muted">Коментарі до перенесення термінів і зміни статусів із push-сповіщень. Новіші зверху.</p><div id="notifications">Завантаження…</div>
-    <h3>Історія змін</h3><p class="muted">Статуси, перенесення термінів та інші зміни з журналу DIM9000.</p><div id="history">Завантаження…</div><button id="moreHistory" hidden>Ще зміни</button>
-    <h3>Діалог за заявкою</h3><div id="chat">Завантаження…</div><button id="moreChat" hidden>Раніші повідомлення</button>
-    <form id="messageForm"><label>Нове повідомлення <textarea name="text" rows="3" required></textarea></label><button>Надіслати</button></form>
+    </section><section class="detail-section secondary-section">
     <details><summary>Редагування заявки</summary><p class="muted">API оголошує редагування, але може обмежувати його для мешканця або поточного статусу. Помилка сервера буде показана без повторного надсилання.</p><form id="editForm">
     ${kind==='orders'?`<label>Категорія <select name="category">${options(Object.entries(state.boot.categories),o.category)}</select></label>`:''}
     <label>Опис <textarea name="description" rows="6" required>${esc(o.description)}</textarea></label><button>Зберегти зміни</button></form></details>
-    <details><summary>Усі поля відповіді API</summary><pre class="raw">${esc(JSON.stringify(o,null,2))}</pre></details>`;
-  $('backList').onclick=()=>$('listPanel').scrollIntoView({behavior:'smooth'});
+    <details><summary>Технічні дані заявки</summary><pre class="raw">${esc(JSON.stringify(o,null,2))}</pre></details></section>`;
+  $('backList').onclick=backToList;
+  document.querySelectorAll('[data-section]').forEach(button=>button.onclick=()=>{const section=$(button.dataset.section);section.scrollIntoView({block:'start'});section.focus({preventScroll:true});});
+  $('orderTitle').focus({preventScroll:true});
+  const draftKey=kind+':'+id;
+  $('messageForm').elements.text.value=messageDrafts.get(draftKey)||'';
+  $('messageForm').elements.text.oninput=e=>messageDrafts.set(draftKey,e.target.value);
   $('refreshDetail').onclick=e=>run(e.currentTarget,()=>openOrder(kind,id));
   $('export').onclick=e=>run(e.currentTarget,exportOrder);$('print').onclick=()=>window.print();
   $('editForm').onsubmit=e=>{e.preventDefault();run(e.submitter,async()=>{const data=Object.fromEntries(new FormData(e.target));await call({action:'update',...context(),data});await openOrder(kind,id);await loadList();notice('Зміни збережено.');});};
   if($('reviewForm'))$('reviewForm').onsubmit=e=>{e.preventDefault();run(e.submitter,async()=>{const data=Object.fromEntries(new FormData(e.target));await call({action:'review',...context(),data});await openOrder(kind,id);notice('Оцінку збережено.');});};
-  $('messageForm').onsubmit=e=>{e.preventDefault();const form=e.target;run(e.submitter,async()=>{await call({action:'message',...context(),text:new FormData(form).get('text')});form.reset();state.chatPage=1;state.messages=[];await loadChat(generation);notice('Повідомлення надіслано.');});};
+  $('messageForm').onsubmit=e=>{e.preventDefault();const form=e.target;const text=form.elements.text.value;run(e.submitter,async()=>{await call({action:'message',kind,id,text});if(messageDrafts.get(draftKey)===text){messageDrafts.delete(draftKey);form.reset();}if(generation===state.generation){state.chatPage=1;state.messages=[];await loadChat(generation);}notice('Повідомлення надіслано.');});};
   $('moreHistory').onclick=e=>run(e.currentTarget,async()=>{state.historyPage++;try{await loadHistory(generation);}catch(err){state.historyPage--;throw err;}});
   $('moreChat').onclick=e=>run(e.currentTarget,async()=>{state.chatPage++;try{await loadChat(generation);}catch(err){state.chatPage--;throw err;}});
   await Promise.allSettled([loadHistory(generation),loadChat(generation),loadNotifications(generation)]);
@@ -181,8 +224,17 @@ async function upload(file){
   return call({action:'upload',name:file.name,mime:file.type,data});
 }
 $('filters').onsubmit=e=>{e.preventDefault();state.page=1;run(e.submitter,loadList);};
+$('dismissNotice').onclick=()=>notice('');
+$('toggleFilters').onclick=()=>{const expanded=$('filters').classList.toggle('filters-expanded');$('toggleFilters').setAttribute('aria-expanded',String(expanded));$('toggleFilters').textContent=expanded?'Менше фільтрів':'Ще фільтри';};
 $('kind').onchange=()=>{$('category').disabled=$('kind').value!=='orders';state.page=1;run(null,loadList);};
-$('prev').onclick=e=>{state.page--;run(e.currentTarget,loadList);};$('next').onclick=e=>{state.page++;run(e.currentTarget,loadList);};
+for(const id of ['space','group','category'])$(id).onchange=()=>{state.page=1;run(null,loadList);};
+$('resetFilters').onclick=()=>{$('group').value='';$('category').value='';$('search').value='';state.page=1;run(null,loadList);};
+async function changePage(delta){
+  const previous=state.page;state.page+=delta;
+  $('prev').disabled=$('next').disabled=true;
+  try{await loadList();$('listPanel').scrollTop=0;}catch(e){state.page=previous;$('prev').disabled=previous<=1;$('next').disabled=false;throw e;}
+}
+$('prev').onclick=()=>run(null,()=>changePage(-1));$('next').onclick=()=>run(null,()=>changePage(1));
 $('new').onclick=e=>run(e.currentTarget,newOrder);$('closeCreate').onclick=()=>$('createDialog').close();
 $('createSpace').onchange=()=>{if(state.createKind==='paid-orders')run(null,loadCatalog);};
 $('createPhotos').onchange=()=>{state.draftFiles=[];$('draftFiles').textContent='';};
@@ -201,4 +253,7 @@ $('sms').onclick=e=>run(e.currentTarget,async()=>{await request('/api/sms',{phon
 $('loginForm').onsubmit=e=>{e.preventDefault();run(e.submitter,async()=>{await request('/api/login',Object.fromEntries(new FormData(e.target)));e.target.elements.code.value='';await start();});};
 $('logout').onclick=e=>run(e.currentTarget,async()=>{await request('/api/logout',{});location.reload();});
 $('closeExport').onclick=()=>$('exportDialog').close();
+let printDetails=[];
+window.addEventListener('beforeprint',()=>{printDetails=[...document.querySelectorAll('.order-facts:not([open]),.attachments:not([open])')];printDetails.forEach(el=>el.open=true);});
+window.addEventListener('afterprint',()=>{printDetails.forEach(el=>el.open=false);printDetails=[];});
 run(null,start);

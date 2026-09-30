@@ -11,7 +11,7 @@
 <body>
 <header><h1>DIM9000 · Заявки</h1><span id="connection">Кабінет мешканця</span><button id="install" hidden>Встановити</button><button id="logout" hidden>Вийти</button></header>
 <p id="offline" role="status" hidden>Немає інтернету. Для оновлення й надсилання змін потрібне з’єднання.</p>
-<p id="notice" role="status" hidden></p>
+<div id="notice" role="status" hidden><span id="noticeText"></span><button id="dismissNotice" type="button" aria-label="Закрити повідомлення">×</button></div>
 <section id="login" hidden>
  <h2>Вхід через SMS</h2><p>Токени DIM9000 зберігаються на сервері. Вихід завершує сесію цього браузера.</p>
  <form id="loginForm"><label>Телефон <input name="phone" type="tel" placeholder="+380…" required autocomplete="tel"></label>
@@ -19,17 +19,21 @@
  <label>SMS-код <input name="code" inputmode="numeric" autocomplete="one-time-code" required></label><button>Увійти</button></form>
 </section>
 <main id="app" hidden>
- <form id="filters" class="toolbar">
-  <label>Об’єкт <select id="space"></select></label>
+ <div class="workspace-heading"><h2>Мої заявки</h2><button type="button" id="new" class="primary">+ Нова заявка</button></div>
+ <form id="filters">
+  <div id="extraFilters" class="extra-filters">
+  <label class="space-filter">Об’єкт <select id="space"></select></label>
   <label>Тип <select id="kind"><option value="orders">Заявки</option><option value="paid-orders">Платні послуги</option></select></label>
-  <label>Стан <select id="group"><option value="">Усі</option><option value="active">Активні</option><option value="finished">Завершені</option></select></label>
   <label>Категорія <select id="category"><option value="">Усі</option></select></label>
-  <label>Пошук <input id="search" type="search" placeholder="Текст або номер"></label>
-  <button>Знайти / оновити</button><button type="button" id="new">Нова заявка</button>
+  </div>
+  <label>Стан <select id="group"><option value="">Усі</option><option value="active">Активні</option><option value="finished">Завершені</option></select></label>
+  <button type="button" id="toggleFilters" class="mobileOnly" aria-expanded="false" aria-controls="extraFilters">Ще фільтри</button>
+  <label class="search-filter">Пошук <input id="search" type="search" placeholder="Текст або номер заявки"></label>
+  <div class="filter-actions"><button type="submit">Знайти / оновити</button><button type="button" id="resetFilters">Скинути</button></div>
  </form>
  <div class="columns">
-  <section id="listPanel"><div class="toolbar"><strong id="count"></strong><button id="prev">←</button><span id="page"></span><button id="next">→</button></div><div id="list"></div></section>
-  <section id="detail" aria-live="polite"><p class="muted">Оберіть заявку, щоб побачити повний опис, відповідь, історію та діалог.</p></section>
+  <section id="listPanel" aria-label="Список заявок"><div class="list-toolbar"><strong id="count" role="status"></strong><nav aria-label="Сторінки заявок"><button id="prev" aria-label="Попередня сторінка">←</button><span id="page"></span><button id="next" aria-label="Наступна сторінка">→</button></nav></div><div id="list"></div></section>
+  <section id="detail" aria-label="Деталі заявки"><div class="empty-state"><h2>Оберіть заявку</h2><p class="muted">Тут будуть опис, відповідь УК, пояснення до перенесень та діалог.</p></div></section>
  </div>
 </main>
 <dialog id="createDialog">
