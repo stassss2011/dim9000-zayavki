@@ -3,9 +3,9 @@ import { createClient } from '@base44/sdk';
 const client=createClient({appId:BASE44_APP_ID});
 const user=await client.auth.me().catch(()=>null);
 if(!user){
-  document.getElementById('login').innerHTML='<h2>Приватний кабінет</h2><p>Увійдіть у свій Base44 акаунт, щоб відкрити заявки.</p><button id="base44Login">Увійти</button>';
+  document.getElementById('login').innerHTML='<h2>Приватний кабінет</h2><p>Увійдіть у свій Base44 акаунт, щоб відкрити заявки.</p><button id="base44Login">Увійти через Google</button>';
   document.getElementById('login').hidden=false;
-  document.getElementById('base44Login').onclick=()=>client.auth.redirectToLogin(location.origin+'/');
+  document.getElementById('base44Login').onclick=()=>client.auth.loginWithProvider('google',location.origin+'/');
 }else{
  const storageKey='dim9000-session:'+user.id;
  let queue=Promise.resolve();

@@ -23,8 +23,9 @@ export class DimClient {
       headers['Content-Type']=form?'application/x-www-form-urlencoded':method==='PATCH'&&service==='main'?'application/merge-patch+json':service==='main'?'application/ld+json':'application/json';
     }
     let response;
-    try {response=await this.fetcher(BASES[service]+path,{method,headers,body,redirect:'error',signal:AbortSignal.timeout(30000)});}
+    try {response=await this.fetcher(BASES[service]+path,{method,headers,body,redirect:'manual',signal:AbortSignal.timeout(30000)});}
     catch {throw new ApiError(504,{message:'Не вдалося отримати відповідь DIM9000. Якщо це була зміна, оновіть дані перед повтором: сервер міг уже її виконати.'});}
+    if(response.status>=300&&response.status<400)throw new ApiError(502,{message:'DIM9000 повернув неочікуване перенаправлення; запит не повторювався'});
     const text=await response.text();
     let result=null;
     try {result=text?JSON.parse(text):null;}catch{throw new ApiError(response.ok?502:response.status,{message:'DIM9000 повернув відповідь не у форматі JSON'});}

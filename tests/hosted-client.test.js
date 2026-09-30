@@ -41,9 +41,12 @@ test('uncertain writes are not retried and transient refresh keeps credentials',
 });
 
 test('rejects redirects without forwarding credentials', async () => {
+  let calls=0;
   const c = new DimClient({fetcher:async (url,opts)=>{
-    assert.equal(opts.redirect,'error');
-    throw new TypeError('redirect');
+    calls++;
+    assert.equal(opts.redirect,'manual');
+    return new Response('',{status:302,headers:{Location:'https://evil.test'}});
   }});
-  await assert.rejects(c.transport('GET','orders',{token:'synthetic'}),e=>e.status===504);
+  await assert.rejects(c.transport('GET','orders',{token:'synthetic'}),e=>e.status===502);
+  assert.equal(calls,1);
 });
