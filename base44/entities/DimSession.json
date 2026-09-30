@@ -1,0 +1,15 @@
+{
+  "name": "DimSession",
+  "type": "object",
+  "properties": {
+    "owner_id": {"type":"string"},
+    "encrypted_tokens": {"type":"string"},
+    "expires_at": {"type":"number"},
+    "uploads": {"type":"array","items":{"type":"string"}},
+    "last_sms": {"type":"number"},
+    "login_attempts": {"type":"number"},
+    "attempt_window": {"type":"number"}
+  },
+  "required": ["owner_id", "encrypted_tokens", "expires_at"],
+  "rls": {"create":false,"read":false,"update":false,"delete":false}
+}

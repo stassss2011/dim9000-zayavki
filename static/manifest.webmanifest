@@ -1,0 +1,15 @@
+{
+  "id":"/",
+  "name":"DIM9000 — Заявки",
+  "short_name":"Заявки",
+  "lang":"uk",
+  "start_url":"/",
+  "scope":"/",
+  "display":"standalone",
+  "background_color":"#f6f8fa",
+  "theme_color":"#17324d",
+  "icons":[
+    {"src":"/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}

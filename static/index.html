@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DIM9000 — Заявки</title><link rel="stylesheet" href="/style.css">
+  <meta name="theme-color" content="#17324d"><meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-192.png">
+  <script src="/pwa.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<header><h1>DIM9000 · Заявки</h1><span id="connection">Кабінет мешканця</span><button id="install" hidden>Встановити</button><button id="logout" hidden>Вийти</button></header>
+<p id="offline" role="status" hidden>Немає інтернету. Для оновлення й надсилання змін потрібне з’єднання.</p>
+<p id="notice" role="status" hidden></p>
+<section id="login" hidden>
+ <h2>Вхід через SMS</h2><p>Токени DIM9000 зберігаються на сервері. Вихід завершує сесію цього браузера.</p>
+ <form id="loginForm"><label>Телефон <input name="phone" type="tel" placeholder="+380…" required autocomplete="tel"></label>
+ <button type="button" id="sms">Отримати код</button>
+ <label>SMS-код <input name="code" inputmode="numeric" autocomplete="one-time-code" required></label><button>Увійти</button></form>
+</section>
+<main id="app" hidden>
+ <form id="filters" class="toolbar">
+  <label>Об’єкт <select id="space"></select></label>
+  <label>Тип <select id="kind"><option value="orders">Заявки</option><option value="paid-orders">Платні послуги</option></select></label>
+  <label>Стан <select id="group"><option value="">Усі</option><option value="active">Активні</option><option value="finished">Завершені</option></select></label>
+  <label>Категорія <select id="category"><option value="">Усі</option></select></label>
+  <label>Пошук <input id="search" type="search" placeholder="Текст або номер"></label>
+  <button>Знайти / оновити</button><button type="button" id="new">Нова заявка</button>
+ </form>
+ <div class="columns">
+  <section id="listPanel"><div class="toolbar"><strong id="count"></strong><button id="prev">←</button><span id="page"></span><button id="next">→</button></div><div id="list"></div></section>
+  <section id="detail" aria-live="polite"><p class="muted">Оберіть заявку, щоб побачити повний опис, відповідь, історію та діалог.</p></section>
+ </div>
+</main>
+<dialog id="createDialog">
+ <form id="createForm"><h2>Нова заявка</h2><p id="createType"></p>
+ <label>Об’єкт <select name="space" id="createSpace" required></select></label>
+ <label id="categoryLabel">Категорія <select name="category" id="createCategory" required></select></label>
+ <label id="serviceLabel" hidden>Послуга <select name="name" id="createService"></select></label>
+ <label>Опис <textarea name="description" rows="7" required maxlength="4000"></textarea></label>
+ <label id="photosLabel">Фото (до 5, JPEG/PNG/WebP, до 10 МБ кожне) <input id="createPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple></label>
+ <p id="draftFiles" class="muted"></p><p id="createError" role="alert"></p>
+ <div class="toolbar"><button>Створити заявку</button><button type="button" id="closeCreate">Закрити</button></div>
+ </form>
+</dialog>
+<dialog id="exportDialog"><h2>Повне зведення заявки</h2><p>Можна завантажити TXT або скопіювати текст нижче.</p><p><a id="exportLink" download>Завантажити TXT</a></p><label>Текст зведення <textarea id="exportText" readonly rows="15"></textarea></label><p><button id="closeExport" type="button">Закрити</button></p></dialog>
+</body></html>
