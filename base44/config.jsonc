@@ -1,6 +1,6 @@
 {
   "name": "dim9000-zayavki",
   "description": "Private resident issue manager",
-  "visibility": "private",
+  "visibility": "public",
   "site": {"outputDirectory":"dist","buildCommand":"npm run build"}
 }

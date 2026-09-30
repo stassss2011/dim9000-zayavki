@@ -76,7 +76,7 @@ async function openOrder(kind,id) {
   state.order=result.order;const o=state.order;
   document.querySelectorAll('.card').forEach(x=>x.classList.toggle('selected',Number(x.dataset.id)===id&&$('kind').value===kind));
   const review=typeof o.review==='object'?o.review:null;
-  $('detail').innerHTML=`<div class="toolbar"><h2>Заявка № ${esc(o.id)}</h2><button id="refreshDetail">Оновити</button><button id="export">Зберегти повне зведення</button><button id="print">Друк / PDF</button></div>
+  $('detail').innerHTML=`<div class="toolbar"><button id="backList" class="mobileOnly">← До списку</button><h2>Заявка № ${esc(o.id)}</h2><button id="refreshDetail">Оновити</button><button id="export">Зберегти повне зведення</button><button id="print">Друк / PDF</button></div>
     <dl class="facts">${fact('Статус',statuses[o.status]||o.status)}${fact('Категорія / послуга',state.boot.categories[o.category]||o.name?.name||o.name)}
     ${fact('Створено',date(o.createdAt))}${fact('Термін виконання',date(o.deadline))}${fact('Плановий термін',date(o.plannedDeadline))}
     ${fact('Виконано / закрито',date(o.completedAt))}${fact('Об’єкт',address(o.space)||address(o))}${fact('Відповідальний',person(o.responsible))}</dl>
@@ -94,6 +94,7 @@ async function openOrder(kind,id) {
     ${kind==='orders'?`<label>Категорія <select name="category">${options(Object.entries(state.boot.categories),o.category)}</select></label>`:''}
     <label>Опис <textarea name="description" rows="6" required>${esc(o.description)}</textarea></label><button>Зберегти зміни</button></form></details>
     <details><summary>Усі поля відповіді API</summary><pre class="raw">${esc(JSON.stringify(o,null,2))}</pre></details>`;
+  $('backList').onclick=()=>$('listPanel').scrollIntoView({behavior:'smooth'});
   $('refreshDetail').onclick=e=>run(e.currentTarget,()=>openOrder(kind,id));
   $('export').onclick=e=>run(e.currentTarget,exportOrder);$('print').onclick=()=>window.print();
   $('editForm').onsubmit=e=>{e.preventDefault();run(e.submitter,async()=>{const data=Object.fromEntries(new FormData(e.target));await call({action:'update',...context(),data});await openOrder(kind,id);await loadList();notice('Зміни збережено.');});};

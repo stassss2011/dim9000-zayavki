@@ -2,8 +2,10 @@
 
 Use Base44 for the website and its Deno backend functions. Keep the plain
 Ukrainian interface and the Python localhost version. The GitHub repository
-is public; the deployed app is private and its function additionally checks
-the configured owner email. No paid subscription is changed automatically.
+is public; the deployed shell is public and its backend function checks
+the configured owner email before accessing any session or upstream data.
+Base44 platform-level private visibility requires a different plan; the
+owner gate and deny-all entity rules enforce data privacy on the current plan. No paid subscription is changed automatically.
 
 The hosted frontend calls a single authenticated function, dimApi, with the
 same operations as the local API. Each browser gets its own session record;
