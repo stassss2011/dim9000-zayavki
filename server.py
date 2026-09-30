@@ -11,7 +11,7 @@ from client import ApiError, Client
 from service import Service
 
 ROOT = Path(__file__).parent
-STATIC = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css'}
+STATIC = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/read-cache.js': 'read-cache.js'}
 STATIC.update({('/' + name): name for name in ('pwa.js', 'sw.js', 'offline.html',
               'manifest.webmanifest', 'icon-192.png', 'icon-512.png')})
 

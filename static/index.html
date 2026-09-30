@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#17324d"><meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-192.png">
   <script src="/pwa.js" defer></script>
-  <script src="/app.js" defer></script>
+  <script type="module" src="/app.js"></script>
 </head>
 <body>
 <header><h1>DIM9000 · Заявки</h1><span id="connection">Кабінет мешканця</span><button id="install" hidden>Встановити</button><button id="logout" hidden>Вийти</button></header>
@@ -28,7 +28,7 @@
   </div>
   <label>Стан <select id="group"><option value="">Усі</option><option value="active">Активні</option><option value="finished">Завершені</option></select></label>
   <button type="button" id="toggleFilters" class="mobileOnly" aria-expanded="false" aria-controls="extraFilters">Ще фільтри</button>
-  <label class="search-filter">Пошук <input id="search" type="search" placeholder="Текст або номер заявки"></label>
+  <label class="search-filter">Пошук <input id="search" type="search" placeholder="Текст або номер — шукає одразу"></label>
   <div class="filter-actions"><button type="submit">Знайти / оновити</button><button type="button" id="resetFilters">Скинути</button></div>
  </form>
  <div class="columns">

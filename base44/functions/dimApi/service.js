@@ -28,7 +28,7 @@ export class Service {
    if(!spaces.some(s=>s['@id']===selected))fail('Оберіть ваш об’єкт');
    const q=new URLSearchParams({page:page(b.page),itemsPerPage:20,'order[createdAt]':'desc',space:selected});
    for(const key of ['status','category'])if(b[key])q.set(key,String(b[key]));
-   if(b.search)q.set(kind==='orders'?'keyword_search':'search',String(b.search));
+   if(b.search)q.set(kind==='orders'?(/^[0-9]+$/.test(String(b.search))?'id':'keyword_search'):'search',String(b.search));
    for(const status of b.group==='active'?['new','consideration','in_progress','not_paid','processing_refunds']:b.group==='finished'?['completed','canceled']:[])q.append('status[]',status);
    return c.request('GET',kind+'?'+q);
   }

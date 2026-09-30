@@ -153,3 +153,30 @@ dialog::backdrop{background:#0006}
  .raw{max-height:none}
  .photos img{max-width:240px}
 }
+
+/* Short, functional feedback. Reduced-motion users keep every state cue. */
+button,.card,input,select,textarea{transition:background-color 140ms,border-color 140ms,box-shadow 140ms,opacity 140ms}
+button:active:not(:disabled){transform:translateY(1px)}
+button{position:relative;touch-action:manipulation}
+button[aria-busy=true]{color:transparent!important;opacity:.8;cursor:wait}
+button[aria-busy=true]::after{content:'';position:absolute;left:calc(50% - 8px);top:calc(50% - 8px);width:16px;height:16px;border:2px solid #a6b4c2;border-top-color:#173f65;border-radius:50%;animation:spin .7s linear infinite}
+button.primary[aria-busy=true]::after{border-color:#ffffff70;border-top-color:white}
+body::before{content:'';position:fixed;top:0;left:0;right:0;height:3px;z-index:100;background:linear-gradient(90deg,transparent,#3575ad,transparent);opacity:0;pointer-events:none}
+body.network-busy::before{opacity:1;animation:progress 1.4s ease-in-out infinite}
+#list[aria-busy=true]{opacity:.7;pointer-events:auto;transition:opacity 160ms}
+#detail[aria-busy=true]>.detail-header{border-bottom-color:#3575ad}
+.section-nav button{border-bottom:2px solid transparent}
+.section-nav button[aria-current=location]{color:#173f65;background:#eef4fa;border-bottom-color:#245f95;font-weight:650}
+.skeleton{padding:8px 20px 24px}
+.skeleton i{display:block;height:14px;margin:16px 0;border-radius:4px;background:linear-gradient(90deg,#edf0f3 25%,#e0e6ec 50%,#edf0f3 75%);background-size:200% 100%;animation:shimmer 1.4s ease-in-out infinite}
+.skeleton i:nth-child(2){width:90%}.skeleton i:nth-child(3){width:65%}
+#list>.card,.detail-section{animation:appear 140ms ease-out}
+#notice:not([hidden]),dialog[open]{animation:arrive 160ms ease-out}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes progress{0%{transform:translateX(-70%)}100%{transform:translateX(70%)}}
+@keyframes shimmer{to{background-position:-200% 0}}
+@keyframes appear{from{opacity:.55}to{opacity:1}}
+@keyframes arrive{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}

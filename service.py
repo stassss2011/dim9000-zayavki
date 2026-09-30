@@ -55,7 +55,10 @@ class Service:
                 if body.get(key):
                     query[key] = body[key]
             if body.get('search'):
-                query['keyword_search' if kind == 'orders' else 'search'] = body['search']
+                key = 'search'
+                if kind == 'orders':
+                    key = 'id' if re.fullmatch(r'[0-9]+', str(body['search'])) else 'keyword_search'
+                query[key] = body['search']
             if body.get('group') == 'active':
                 query['status[]'] = ['new', 'consideration', 'in_progress', 'not_paid', 'processing_refunds']
             elif body.get('group') == 'finished':

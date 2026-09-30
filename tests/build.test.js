@@ -23,7 +23,7 @@ test('hosted updates get fresh asset URLs and never include local state', async(
   assert.ok(sw.includes('/'+app));assert.ok(!sw.includes('__BUILD_ID__'));
   assert.ok(!first.some(name=>/^(?:app|hosted|pwa)\.js$/.test(name)));
   assert.ok(!first.some(name=>name.startsWith('.')||name.endsWith('.map')));
-  await appendFile(join(cwd,'static/app.js'),'\n// new release\n');
+  await appendFile(join(cwd,'static/app.js'),'\nconsole.info("new release");\n');
   build();
   const second=await readdir(join(cwd,'dist'));
   assert.ok(!second.includes(app));assert.ok(!second.includes(hosted));

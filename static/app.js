@@ -1,4 +1,5 @@
 'use strict';
+import {createReadCache} from './read-cache.js';
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const statuses = {new:'Нова',consideration:'В обробці',in_progress:'Виконується',completed:'Виконана',canceled:'Відхилена',not_paid:'Не оплачено',processing_refunds:'Повернення коштів'};
@@ -11,19 +12,26 @@ const address = s => Object.values(s?.address || s?.addressData || {}).filter(v 
 const context = () => ({kind:state.selected.kind,id:state.selected.id});
 function notice(text, error=false) {$('noticeText').textContent=text;$('notice').hidden=!text;$('notice').className=error?'error':'';$('notice').setAttribute('role',error?'alert':'status');}
 function errorText(error) {return typeof error==='string'?error: error?.['hydra:description'] || error?.message || error?.detail || JSON.stringify(error);}
-async function request(path, body) {
+async function rawRequest(path, body) {
   if(window.hostedRequest)return window.hostedRequest(path,body);
   const r = await fetch(path, body === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const d = await r.json();
   if (!r.ok) {const e=new Error(errorText(d.error||d));e.status=r.status;throw e;}
   return d;
 }
-const call = body => request('/api/call',body);
+let pendingRequests=0,progressTimer;
+async function request(path,body){
+  if(++pendingRequests===1)progressTimer=setTimeout(()=>document.body.classList.add('network-busy'),180);
+  try{return await rawRequest(path,body);}finally{if(--pendingRequests===0){clearTimeout(progressTimer);document.body.classList.remove('network-busy');}}
+}
+const readCache=createReadCache(body=>request('/api/call',body));
+const call = readCache.call;
 async function run(button, task) {
   if (button?.disabled) return;
-  if (button) button.disabled=true;
-  try {notice('');await task();} catch(e) {notice(e.message,true);} finally {if(button)button.disabled=false;}
+  if (button){button.disabled=true;button.setAttribute('aria-busy','true');}
+  try {notice('');await task();} catch(e) {notice(e.message,true);} finally {if(button){button.disabled=false;button.removeAttribute('aria-busy');}}
 }
+const loadingMarkup=label=>`<p class="muted" role="status">${esc(label)}</p><div class="skeleton" aria-hidden="true"><i></i><i></i><i></i></div>`;
 function options(items, selected='') {return items.map(([value,label])=>`<option value="${esc(value)}" ${value===selected?'selected':''}>${esc(label)}</option>`).join('');}
 async function start() {
   const status=await request('/api/status');$('login').hidden=status.loggedIn;$('app').hidden=!status.loggedIn;$('logout').hidden=!status.loggedIn;
@@ -42,10 +50,11 @@ async function loadList() {
   const generation=++state.listGeneration;
   $('count').textContent='Завантаження…';
   $('list').setAttribute('aria-busy','true');
+  if(!$('list').children.length)$('list').innerHTML=loadingMarkup('Завантаження заявок…');
   const kind=$('kind').value;
   let d;
   try{d=await call({action:'list',kind,space:$('space').value,page:state.page,group:$('group').value,category:kind==='orders'?$('category').value:'',search:$('search').value.trim()});}
-  catch(e){if(generation===state.listGeneration){$('count').textContent='Не вдалося оновити';$('list').removeAttribute('aria-busy');}throw e;}
+  catch(e){if(generation!==state.listGeneration)return;if(generation===state.listGeneration){$('count').textContent='Не вдалося оновити';$('list').removeAttribute('aria-busy');}throw e;}
   if(generation!==state.listGeneration)return;
   $('list').removeAttribute('aria-busy');
   $('count').textContent=`Знайдено: ${d['hydra:totalItems'] ?? '—'}`;$('page').textContent=`Сторінка ${state.page}`;
@@ -60,6 +69,7 @@ async function loadList() {
       ${o.review?`<span>Оцінка ${esc(o.review.rating)}/5</span>`:''}${o.unreadMessagesCount?`<strong>Нових: ${esc(o.unreadMessagesCount)}</strong>`:''}</div>
     </article>`;
   }).join('')||'<p>Заявок за цими умовами немає.</p>';
+  $('listPanel').scrollTop=0;
   document.querySelectorAll('.card').forEach(card=>{
     const open=()=>run(null,()=>openOrder(kind,Number(card.dataset.id)));
     card.onclick=open;card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}};
@@ -75,6 +85,23 @@ function photos(gallery) {
 }
 let listScrollY=0;
 const messageDrafts=new Map();
+const smoothBehavior=()=>matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth';
+let sectionScrollHandler;
+function trackSections(){
+  if(sectionScrollHandler){$('detail').removeEventListener('scroll',sectionScrollHandler);window.removeEventListener('scroll',sectionScrollHandler);}
+  let scheduled=false;
+  const update=()=>{
+    scheduled=false;
+    const header=document.querySelector('.detail-header');if(!header)return;
+    const edge=header.getBoundingClientRect().bottom+40;
+    const sections=[...document.querySelectorAll('.detail-section[id]')];
+    let active=sections[0]?.id;
+    for(const section of sections)if(section.getBoundingClientRect().top<=edge)active=section.id;
+    document.querySelectorAll('[data-section]').forEach(button=>button.setAttribute('aria-current',button.dataset.section===active?'location':'false'));
+  };
+  sectionScrollHandler=()=>{if(!scheduled){scheduled=true;requestAnimationFrame(update);}};
+  $('detail').addEventListener('scroll',sectionScrollHandler,{passive:true});window.addEventListener('scroll',sectionScrollHandler,{passive:true});update();
+}
 function backToList(){
   if(location.hash==='#order')history.back();
   else showList();
@@ -91,19 +118,35 @@ window.addEventListener('hashchange',()=>{
   else showList();
 });
 if(location.hash==='#order')history.replaceState(null,'',location.pathname+location.search);
-async function openOrder(kind,id) {
+async function openOrder(kind,id,{refresh=false,preserve=false}={}) {
+  const same=state.selected?.kind===kind&&state.selected?.id===id&&!!$('orderTitle');
+  if(same&&!refresh){$('app').classList.add('detail-open');if(location.hash!=='#order')history.pushState(null,'','#order');return;}
+  const snapshot=same&&preserve?{
+    top:$('detail').scrollTop,y:window.scrollY,
+    open:[...$('detail').querySelectorAll('details')].map(el=>el.open),
+    inputs:[...$('detail').querySelectorAll('form textarea,form select,form input:not([type=file])')].map(el=>({form:el.form.id,name:el.name,value:el.value})),
+    sections:Object.fromEntries(['history','chat','notifications'].map(key=>[key,$(key).innerHTML]))
+  }:null;
+  if(refresh)readCache.clear();
+  const previousGeneration=state.generation;
   const generation=++state.generation;
-  state.selected={kind,id};state.history=[];state.messages=[];state.notifications=[];state.historyPage=1;state.chatPage=1;state.historyError=null;state.chatError=null;
+  state.selected={kind,id};
+  if(snapshot)$('detail').querySelectorAll('form').forEach(form=>form.inert=true);
   if(!$('app').classList.contains('detail-open'))listScrollY=window.scrollY;
   $('app').classList.add('detail-open');
   if(location.hash!=='#order')history.pushState(null,'','#order');
-  $('detail').innerHTML='<button class="back-list mobileOnly">← До списку</button><p role="status">Завантаження заявки…</p>';
-  $('detail').querySelector('.back-list').onclick=backToList;
-  $('detail').scrollTop=0;
-  if(matchMedia('(max-width:950px)').matches)window.scrollTo(0,0);
+  document.querySelectorAll('.card').forEach(card=>{const selected=Number(card.dataset.id)===id&&$('kind').value===kind;card.classList.toggle('selected',selected);card.setAttribute('aria-pressed',String(selected));});
+  if(!snapshot){
+    $('detail').innerHTML='<button class="back-list mobileOnly">← До списку</button><div class="detail-section"><h2>Заявка № '+esc(id)+'</h2>'+loadingMarkup('Завантаження заявки…')+'</div>';
+    $('detail').querySelector('.back-list').onclick=backToList;$('detail').scrollTop=0;
+    if(matchMedia('(max-width:950px)').matches)window.scrollTo(0,0);
+  }
+  $('detail').setAttribute('aria-busy','true');
   let result;
-  try{result=await call({action:'detail',kind,id});}catch(e){if(generation===state.generation){$('detail').innerHTML='<button class="back-list">← До списку</button><p class="sectionError">Не вдалося завантажити заявку. Виберіть її ще раз зі списку.</p>';$('detail').querySelector('.back-list').onclick=backToList;}throw e;}
+  try{result=await call({action:'detail',kind,id});}catch(e){if(generation!==state.generation)return;$('detail').removeAttribute('aria-busy');if(snapshot){state.generation=previousGeneration;$('detail').querySelectorAll('form').forEach(form=>form.inert=false);}else{$('detail').innerHTML='<button class="back-list">← До списку</button><p class="sectionError">Не вдалося завантажити заявку. Виберіть її ще раз зі списку.</p>';$('detail').querySelector('.back-list').onclick=backToList;}throw e;}
   if(generation!==state.generation)return;
+  $('detail').removeAttribute('aria-busy');
+  state.history=[];state.messages=[];state.notifications=[];state.historyPage=1;state.chatPage=1;state.historyError=null;state.chatError=null;
   state.order=result.order;const o=state.order;
   document.querySelectorAll('.card').forEach(x=>{const selected=Number(x.dataset.id)===id&&$('kind').value===kind;x.classList.toggle('selected',selected);x.setAttribute('aria-pressed',String(selected));});
   const review=typeof o.review==='object'?o.review:null;
@@ -133,19 +176,36 @@ async function openOrder(kind,id) {
     <label>Опис <textarea name="description" rows="6" required>${esc(o.description)}</textarea></label><button>Зберегти зміни</button></form></details>
     <details><summary>Технічні дані заявки</summary><pre class="raw">${esc(JSON.stringify(o,null,2))}</pre></details></section>`;
   $('backList').onclick=backToList;
-  document.querySelectorAll('[data-section]').forEach(button=>button.onclick=()=>{const section=$(button.dataset.section);section.scrollIntoView({block:'start'});section.focus({preventScroll:true});});
-  $('orderTitle').focus({preventScroll:true});
+  document.querySelectorAll('[data-section]').forEach(button=>button.onclick=()=>{const section=$(button.dataset.section);section.scrollIntoView({block:'start',behavior:smoothBehavior()});section.focus({preventScroll:true});});
+  if(!snapshot&&(!matchMedia('(max-width:950px)').matches||$('app').classList.contains('detail-open')))$('orderTitle').focus({preventScroll:true});
   const draftKey=kind+':'+id;
   $('messageForm').elements.text.value=messageDrafts.get(draftKey)||'';
   $('messageForm').elements.text.oninput=e=>messageDrafts.set(draftKey,e.target.value);
-  $('refreshDetail').onclick=e=>run(e.currentTarget,()=>openOrder(kind,id));
+  $('refreshDetail').onclick=e=>run(e.currentTarget,()=>openOrder(kind,id,{refresh:true,preserve:true}));
   $('export').onclick=e=>run(e.currentTarget,exportOrder);$('print').onclick=()=>window.print();
-  $('editForm').onsubmit=e=>{e.preventDefault();run(e.submitter,async()=>{const data=Object.fromEntries(new FormData(e.target));await call({action:'update',...context(),data});await openOrder(kind,id);await loadList();notice('Зміни збережено.');});};
-  if($('reviewForm'))$('reviewForm').onsubmit=e=>{e.preventDefault();run(e.submitter,async()=>{const data=Object.fromEntries(new FormData(e.target));await call({action:'review',...context(),data});await openOrder(kind,id);notice('Оцінку збережено.');});};
+  $('editForm').onsubmit=e=>{e.preventDefault();run(e.submitter,async()=>{const data=Object.fromEntries(new FormData(e.target));await call({action:'update',kind,id,data});if(generation===state.generation)await openOrder(kind,id,{refresh:true});await loadList();notice('Зміни збережено.');});};
+  if($('reviewForm'))$('reviewForm').onsubmit=e=>{e.preventDefault();run(e.submitter,async()=>{const data=Object.fromEntries(new FormData(e.target));await call({action:'review',kind,id,data});if(generation===state.generation)await openOrder(kind,id,{refresh:true});notice('Оцінку збережено.');});};
   $('messageForm').onsubmit=e=>{e.preventDefault();const form=e.target;const text=form.elements.text.value;run(e.submitter,async()=>{await call({action:'message',kind,id,text});if(messageDrafts.get(draftKey)===text){messageDrafts.delete(draftKey);form.reset();}if(generation===state.generation){state.chatPage=1;state.messages=[];await loadChat(generation);}notice('Повідомлення надіслано.');});};
   $('moreHistory').onclick=e=>run(e.currentTarget,async()=>{state.historyPage++;try{await loadHistory(generation);}catch(err){state.historyPage--;throw err;}});
   $('moreChat').onclick=e=>run(e.currentTarget,async()=>{state.chatPage++;try{await loadChat(generation);}catch(err){state.chatPage--;throw err;}});
+  for(const key of ['history','chat','notifications']){
+    $(key).innerHTML=snapshot?.sections[key]||loadingMarkup('Завантаження…');
+    $(key).setAttribute('aria-busy','true');
+  }
+  if(snapshot){
+    $('detail').querySelectorAll('details').forEach((el,index)=>el.open=snapshot.open[index]||false);
+    for(const input of snapshot.inputs){const el=$(input.form)?.elements.namedItem(input.name);if(el)el.value=input.value;}
+    $('detail').scrollTop=snapshot.top;
+    if(matchMedia('(max-width:950px)').matches)window.scrollTo(0,snapshot.y);
+  }
+  trackSections();
+  $('refreshDetail').disabled=true;$('refreshDetail').setAttribute('aria-busy','true');
   await Promise.allSettled([loadHistory(generation),loadChat(generation),loadNotifications(generation)]);
+  if(generation===state.generation){
+    for(const key of ['history','chat','notifications'])$(key).removeAttribute('aria-busy');
+    $('refreshDetail').disabled=false;$('refreshDetail').removeAttribute('aria-busy');
+    sectionScrollHandler();
+  }
 }
 function notificationTitle(n) {
   if(n.type==='order_deadline_updated'||n.type==='paid_order_deadline_updated')return 'Зміна терміну виконання';
@@ -200,6 +260,7 @@ async function allPages(action, selection) {
   return items;
 }
 async function exportOrder() {
+  readCache.clear();
   const selection={...context()};const o=state.order;
   notice('Завантажую історію, діалог і сповіщення для повного зведення…');
   const [history,messages,notificationResult]=await Promise.all([allPages('history',selection),allPages('chat',selection),call({action:'notifications',...selection})]);
@@ -223,12 +284,24 @@ async function upload(file){
   const data=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=reject;r.readAsDataURL(file);});
   return call({action:'upload',name:file.name,mime:file.type,data});
 }
-$('filters').onsubmit=e=>{e.preventDefault();state.page=1;run(e.submitter,loadList);};
+let searchTimer;
+function applyFilters({fresh=false}={}){
+  clearTimeout(searchTimer);state.page=1;
+  if(fresh)readCache.clear();
+  return loadList();
+}
+$('filters').onsubmit=e=>{e.preventDefault();run(e.submitter,()=>applyFilters({fresh:true}));};
+$('search').oninput=e=>{
+  clearTimeout(searchTimer);++state.listGeneration;
+  $('count').textContent='Пошук…';$('prev').disabled=$('next').disabled=true;
+  if(!e.isComposing)searchTimer=setTimeout(()=>run(null,applyFilters),350);
+};
+$('search').oncompositionend=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>run(null,applyFilters),350);};
 $('dismissNotice').onclick=()=>notice('');
 $('toggleFilters').onclick=()=>{const expanded=$('filters').classList.toggle('filters-expanded');$('toggleFilters').setAttribute('aria-expanded',String(expanded));$('toggleFilters').textContent=expanded?'Менше фільтрів':'Ще фільтри';};
-$('kind').onchange=()=>{$('category').disabled=$('kind').value!=='orders';state.page=1;run(null,loadList);};
-for(const id of ['space','group','category'])$(id).onchange=()=>{state.page=1;run(null,loadList);};
-$('resetFilters').onclick=()=>{$('group').value='';$('category').value='';$('search').value='';state.page=1;run(null,loadList);};
+$('kind').onchange=()=>{$('category').disabled=$('kind').value!=='orders';run(null,applyFilters);};
+for(const id of ['space','group','category'])$(id).onchange=()=>run(null,applyFilters);
+$('resetFilters').onclick=()=>{$('group').value='';$('category').value='';$('search').value='';run(null,applyFilters);};
 async function changePage(delta){
   const previous=state.page;state.page+=delta;
   $('prev').disabled=$('next').disabled=true;
@@ -251,7 +324,7 @@ $('createForm').onsubmit=e=>{e.preventDefault();run(e.submitter,async()=>{
 });};
 $('sms').onclick=e=>run(e.currentTarget,async()=>{await request('/api/sms',{phone:$('loginForm').elements.phone.value.trim()});notice('SMS-код надіслано.');});
 $('loginForm').onsubmit=e=>{e.preventDefault();run(e.submitter,async()=>{await request('/api/login',Object.fromEntries(new FormData(e.target)));e.target.elements.code.value='';await start();});};
-$('logout').onclick=e=>run(e.currentTarget,async()=>{await request('/api/logout',{});location.reload();});
+$('logout').onclick=e=>run(e.currentTarget,async()=>{readCache.clear();await request('/api/logout',{});location.reload();});
 $('closeExport').onclick=()=>$('exportDialog').close();
 let printDetails=[];
 window.addEventListener('beforeprint',()=>{printDetails=[...document.querySelectorAll('.order-facts:not([open]),.attachments:not([open])')];printDetails.forEach(el=>el.open=true);});

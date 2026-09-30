@@ -12,7 +12,7 @@ test('rejects another residents order before related entities are requested',asy
  await assert.rejects(s.call({action:'history',id:42}),e=>e.status===403);
  assert.equal(calls.length,2);
 });
-test('search uses keyword_search and history uses orderId',async()=>{
+test('search uses exact id for numbers, keyword_search for text, and scoped filters',async()=>{
  let seen='';
  const s=new Service(client(async(method,path)=>{
    if(path.startsWith('spaces/'))return spaces;
@@ -20,7 +20,10 @@ test('search uses keyword_search and history uses orderId',async()=>{
    seen=path;return {'hydra:member':[]};
  }));
  await s.call({action:'list',search:'42'});
- assert.equal(new URLSearchParams(seen.split('?')[1]).get('keyword_search'),'42');
+ assert.equal(new URLSearchParams(seen.split('?')[1]).get('id'),'42');
+ assert.equal(new URLSearchParams(seen.split('?')[1]).get('space'),'/api/apartments/example');
+ await s.call({action:'list',search:'broken door'});
+ assert.equal(new URLSearchParams(seen.split('?')[1]).get('keyword_search'),'broken door');
  await s.call({action:'history',id:42});
  assert.equal(new URLSearchParams(seen.split('?')[1]).get('orderId'),'42');
 });

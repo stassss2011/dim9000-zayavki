@@ -9,7 +9,8 @@ await rm('dist',{recursive:true,force:true});await mkdir('dist');
 // Deliberate allowlist: never copy backend, .local, source maps or credentials.
 const files=['index.html','app.js','style.css','pwa.js','sw.js','offline.html','manifest.webmanifest','icon-192.png','icon-512.png'];
 for(const file of files)await copyFile('static/'+file,'dist/'+file);
-let html=(await readFile('dist/index.html','utf8')).replace('<script src="/app.js" defer></script>','<script type="module" src="/hosted.js"></script>');
+let html=(await readFile('dist/index.html','utf8')).replace('<script type="module" src="/app.js"></script>','<script type="module" src="/hosted.js"></script>');
+await build({entryPoints:['static/app.js'],outfile:'dist/app.js',bundle:true,format:'esm'});
 await build({entryPoints:['web/hosted.js'],outfile:'dist/hosted.js',bundle:true,format:'esm',minify:true,define:{BASE44_APP_ID:JSON.stringify(appId)},external:['/app.js']});
 // Hosting caches assets for an hour. Content names also invalidate the adapter
 // when its imported app changes, without caching private responses in the worker.

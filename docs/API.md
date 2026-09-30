@@ -29,8 +29,8 @@ Discovery: `GET index.jsonld`, `GET docs.jsonld` на головному сер�
 DELETE заявки у схемі відсутній. Видалення не є вимогою цього прототипу.
 
 Список заявок: `page`, `itemsPerPage`, `space`, `order[createdAt]=desc`,
-`status[]`, `category`, `keyword_search` (номер або текст). `search` не
-знаходить заявку за номером; `id` підтримує точний номер. Hydra має `hydra:member`, `hydra:totalItems`
+`status[]`, `category`, `keyword_search` (текст). Для точного номера використовується
+`id`: числовий `keyword_search` не гарантує збіг за номером. Hydra має `hydra:member`, `hydra:totalItems`
 і `hydra:view.hydra:next`. Чат має `data`, `total`, `page`, `pageCount`.
 
 Історія: **orderId**, а не одночасні `order=IRI` та `order[createdAt]`:
